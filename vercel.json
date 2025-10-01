@@ -9,7 +9,6 @@
   "routes": [
     {
       "src": "/api/webhook",
-      "methods": ["POST"],
       "dest": "api/webhook.py"
     }
   ]
