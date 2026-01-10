@@ -5,7 +5,7 @@ import telegram
 import logging
 import re
 import os
-from db.database import fetchrow, fetch, execute
+from db.database import fetch, execute
 
 
 
@@ -204,29 +204,29 @@ async def count_links(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "links": link_counts[user_id]["links"],
             }
         # DB: upsert user
-        user_row = await fetchrow(
-            """
-            INSERT INTO users (chat_id, tg_user_id, username, full_name, x_username, link_count)
-            VALUES ($1,$2,$3,$4,$5,1)
-            ON CONFLICT (chat_id, tg_user_id)
-            DO UPDATE SET
-                link_count = users.link_count + 1,
-                x_username = COALESCE(users.x_username, EXCLUDED.x_username)
-            RETURNING id
-            """,
-            update.effective_chat.id,
-            user_id,
-            user_username,
-            user_full_name,
-            link_counts[user_id]["x_username"]
-        )
+        # user_row = await fetchrow(
+        #     """
+        #     INSERT INTO users (chat_id, tg_user_id, username, full_name, x_username, link_count)
+        #     VALUES ($1,$2,$3,$4,$5,1)
+        #     ON CONFLICT (chat_id, tg_user_id)
+        #     DO UPDATE SET
+        #         link_count = users.link_count + 1,
+        #         x_username = COALESCE(users.x_username, EXCLUDED.x_username)
+        #     RETURNING id
+        #     """,
+        #     update.effective_chat.id,
+        #     user_id,
+        #     user_username,
+        #     user_full_name,
+        #     link_counts[user_id]["x_username"]
+        # )
 
         # DB: store link
-        await execute(
-            "INSERT INTO links (user_id, url) VALUES ($1,$2)",
-            user_row["id"],
-            url
-        )
+        # await execute(
+        #     "INSERT INTO links (user_id, url) VALUES ($1,$2)",
+        #     user_row["id"],
+        #     url
+        # )
 
 
         # ⚠️ Alert ONLY if more than 1 link
