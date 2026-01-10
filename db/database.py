@@ -1,29 +1,32 @@
+# db/database.py
 import asyncpg
 import os
 
-pool: asyncpg.Pool | None = None
+pool = None
+
+DATABASE_URL = os.getenv("DATABASE_URL")
 
 async def init_db():
     global pool
-    if pool:
-        return
+    if pool is None:
+        pool = await asyncpg.create_pool(
+            dsn=DATABASE_URL,
+            ssl="require",
+            min_size=1,
+            max_size=1,
+            timeout=10,
+        )
 
-    pool = await asyncpg.create_pool(
-        dsn=os.environ["DATABASE_URL"],
-        min_size=1,
-        max_size=1,
-        ssl="require",
-        timeout=30,
-    )
+async def ensure_db():
+    if pool is None:
+        await init_db()
 
 async def execute(query, *args):
+    await ensure_db()
     async with pool.acquire() as con:
         return await con.execute(query, *args)
 
 async def fetch(query, *args):
+    await ensure_db()
     async with pool.acquire() as con:
         return await con.fetch(query, *args)
-
-async def fetchrow(query, *args):
-    async with pool.acquire() as con:
-        return await con.fetchrow(query, *args)
