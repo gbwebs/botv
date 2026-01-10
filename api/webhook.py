@@ -5,7 +5,7 @@ from fastapi.responses import JSONResponse
 from telegram import Update
 
 from bot.telegram_bot import build_bot
-from db.database import init_db   # 👈 Supabase DB init
+from db.database import init_db  # DB init
 
 app = FastAPI()
 
@@ -16,8 +16,8 @@ bot_app = build_bot()
 @app.on_event("startup")
 async def startup_event():
     """
-    Runs once per cold start
-    Initializes DB + Telegram bot safely
+    Runs once per cold start.
+    Initializes DB + Telegram bot safely.
     """
     try:
         # Initialize database connection pool
@@ -25,7 +25,7 @@ async def startup_event():
 
         # Initialize telegram bot only once
         if not getattr(bot_app, "_initialized", False):
-            await bot_app.initialize()
+            await bot_app.initialize()  # Must initialize before processing updates
             bot_app._initialized = True
 
         print("✅ Bot + Database initialized")
@@ -61,12 +61,13 @@ async def telegram_webhook(request: Request):
 
         update = Update.de_json(data, bot_app.bot)
 
-        # Process update
+        # Process update safely
         await bot_app.process_update(update)
 
         return {"status": "ok"}
 
     except Exception as e:
+        # Catch all errors to prevent webhook failure
         print("❌ Webhook processing failed:", e)
         return JSONResponse(
             content={"status": "error", "detail": str(e)},
