@@ -97,7 +97,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await execute(
         """
-        INSERT INTO public.sessions (chat_id, tracking_enabled)
+        INSERT INTO public.sessionsdata (chat_id, tracking_enabled)
         VALUES ($1, false)
         ON CONFLICT (chat_id)
         DO UPDATE SET
