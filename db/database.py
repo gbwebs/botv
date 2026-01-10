@@ -21,6 +21,11 @@ async def ensure_db():
     if pool is None:
         await init_db()
 
+async def fetchrow(query: str, *args):
+    await ensure_db()
+    async with pool.acquire() as con:
+        return await con.fetchrow(query, *args)
+
 async def execute(query, *args):
     await ensure_db()
     async with pool.acquire() as con:
@@ -30,3 +35,5 @@ async def fetch(query, *args):
     await ensure_db()
     async with pool.acquire() as con:
         return await con.fetch(query, *args)
+    
+
