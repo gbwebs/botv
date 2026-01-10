@@ -4,40 +4,43 @@ import os
 import asyncio
 
 pool = None
-db_lock = asyncio.Lock()
+lock = asyncio.Lock()
 
 async def init_db():
     global pool
-    if pool is None:
-        if "DATABASE_URL" not in os.environ:
-            raise RuntimeError("❌ DATABASE_URL not set")
+
+    if pool is not None:
+        return
+
+    async with lock:
+        if pool is not None:
+            return
 
         pool = await asyncpg.create_pool(
             dsn=os.environ["DATABASE_URL"],
             min_size=1,
-            max_size=5,
-            command_timeout=60
+            max_size=1,  # 🔴 MUST BE 1 on Vercel
+            command_timeout=30,
+            max_inactive_connection_lifetime=30,
         )
-        print("✅ Database pool initialized")
+
+        print("✅ Supabase pool connected")
 
 async def ensure_db():
-    global pool
     if pool is None:
-        async with db_lock:
-            if pool is None:
-                await init_db()
+        await init_db()
 
-async def fetchrow(query, *args):
+async def execute(query, *args):
     await ensure_db()
     async with pool.acquire() as con:
-        return await con.fetchrow(query, *args)
+        return await con.execute(query, *args)
 
 async def fetch(query, *args):
     await ensure_db()
     async with pool.acquire() as con:
         return await con.fetch(query, *args)
 
-async def execute(query, *args):
+async def fetchrow(query, *args):
     await ensure_db()
     async with pool.acquire() as con:
-        return await con.execute(query, *args)
+        return await con.fetchrow(query, *args)
