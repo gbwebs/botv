@@ -1,4 +1,3 @@
-# db/database.py
 import asyncpg
 import os
 import asyncio
@@ -8,22 +7,20 @@ lock = asyncio.Lock()
 
 async def init_db():
     global pool
-
     if pool is not None:
         return
 
     async with lock:
         if pool is not None:
             return
-
+        print("✅")
         pool = await asyncpg.create_pool(
             dsn=os.environ["DATABASE_URL"],
             min_size=1,
-            max_size=1,  # 🔴 MUST BE 1 on Vercel
+            max_size=1,
             command_timeout=30,
-            max_inactive_connection_lifetime=30,
+            ssl="require",
         )
-
         print("✅ Supabase pool connected")
 
 async def ensure_db():
