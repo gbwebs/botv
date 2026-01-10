@@ -6,6 +6,7 @@ import logging
 import re
 import os
 from db.database import fetchrow, fetch, execute
+from db.database import init_db
 
 
 def escape_markdown_v2(text):
@@ -92,7 +93,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             can_add_web_page_previews=False
             )
         )
-        
+
     except Exception as e:
         print("Failed to update permissions:", e)
 
@@ -922,12 +923,15 @@ async def lock_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Failed to lock chat")
 
 
-def build_bot():
+async def build_bot():
     BOT_TOKEN = os.getenv("BOT_TOKEN")
 
     if not BOT_TOKEN:
         raise RuntimeError("❌ BOT_TOKEN environment variable not set")
-
+    
+    
+    await init_db()
+    
     application = Application.builder().token(BOT_TOKEN).build()
 
     # =========================
