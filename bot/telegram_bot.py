@@ -5,7 +5,7 @@ import telegram
 import logging
 import re
 import os
-from db import fetchrow, fetch, execute
+from db.database import fetchrow, fetch, execute
 
 
 def escape_markdown_v2(text):

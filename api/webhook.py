@@ -5,7 +5,7 @@ from fastapi.responses import JSONResponse
 from telegram import Update
 
 from bot.telegram_bot import build_bot
-from db import init_db   # 👈 Supabase DB init
+from db.database import init_db   # 👈 Supabase DB init
 
 app = FastAPI()
 
