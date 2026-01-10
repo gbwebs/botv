@@ -92,6 +92,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             can_add_web_page_previews=False
             )
         )
+        
     except Exception as e:
         print("Failed to update permissions:", e)
 
