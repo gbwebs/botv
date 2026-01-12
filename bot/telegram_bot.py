@@ -560,13 +560,11 @@ async def multiple_links(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     def format_x_username(x_value):
-        # fallback dummy
         if not x_value:
             display = "@i"
             link = "https://x.com/i"
             return f'<a href="{link}">{display}</a>'
 
-        # clean username
         if x_value.startswith(("http://", "https://")):
             username = x_value.rstrip("/").split("/")[-1].split("?")[0]
         else:
@@ -582,23 +580,22 @@ async def multiple_links(update: Update, context: ContextTypes.DEFAULT_TYPE):
     srno = 1
 
     for row in rows:
-        # Telegram display
         display_name = f"@{row['username']}" if row['username'] else row['full_name']
-
-        # X clickable
         x_display = format_x_username(row['x_username'])
 
+        # Header
         lines.append(f"{srno}. {TELEGRAM_ICON} {display_name} | {X_ICON}: {x_display}")
 
-        # Links list
+        # Links as link1, link2, ...
         for idx, link in enumerate(row['links'], start=1):
             if not link.startswith(("http://", "https://")):
                 link = f"https://{link}"  # ensure clickable
-            lines.append(f"   {idx}. <a href='{link}'>{link}</a>")
+            lines.append(f"   link{idx}: <a href='{link}'>{link}</a>")
+
         lines.append("")  # empty line after each user
         srno += 1
 
-        # 📤 Send in batches of 50 users to avoid Telegram limits
+        # Send in batches of 50 users to avoid Telegram limits
         if srno % 50 == 0:
             await update.message.reply_text(
                 "\n".join(lines),
@@ -616,8 +613,8 @@ async def multiple_links(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 
-async def user_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
+async def user_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # 🔐 Admin check
     if not await is_admin(update):
         await update.message.reply_text("🚫 Unauthorized access attempt!")
@@ -625,15 +622,21 @@ async def user_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     chat_id = update.effective_chat.id
 
-    # 📥 Fetch users who shared at least 1 link
+    # 📥 Fetch users who shared at least 1 link and their links
     rows = await fetch(
         """
         SELECT
-            username,
-            x_username
-        FROM users
-        WHERE chat_id = $1 AND link_count > 0
-        ORDER BY id ASC
+            u.id,
+            u.username,
+            u.full_name,
+            u.x_username,
+            COUNT(l.id) AS link_count,
+            ARRAY_AGG(l.url) AS links
+        FROM users u
+        LEFT JOIN links l ON l.user_id = u.id
+        WHERE u.chat_id = $1 AND u.link_count > 0
+        GROUP BY u.id
+        ORDER BY u.id ASC
         """,
         chat_id
     )
@@ -645,45 +648,55 @@ async def user_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
     TELEGRAM_ICON = "💬"
     X_ICON = "𝕏"
 
+    def format_x_username(x_value):
+        # If no X username, fallback dummy @i
+        if not x_value:
+            display = "@i"
+            link = "https://x.com/i"
+            return f'<a href="{link}">{display}</a>'
+        # Clean username
+        username = x_value.lstrip("@")
+        display = f"@{username}"
+        link = f"https://x.com/{username}"
+        return f'<a href="{link}">{display}</a>'
+
     user_list_text = "<b>Users List:</b>\n"
     count = 0
     srno = 1
 
     for row in rows:
-        tg_username = row["username"] or "Unknown"
-        x_value = row["x_username"]
+        tg_username = row["username"] or row["full_name"] or "Unknown"
+        x_display = format_x_username(row["x_username"])
 
-        # 🐦 Decide X display
-        if x_value and x_value.startswith(("http://", "https://")):
-            x_display = f'<a href="{x_value}">Link</a>'
-        elif x_value:
-            x_display = f'@{x_value}'
-        else:
-            x_display = "NA"
+        # Header for user
+        user_list_text += f"{srno}. {TELEGRAM_ICON} @{tg_username} | {X_ICON}: {x_display}\n"
 
-        user_list_text += (
-            f"{srno}. {TELEGRAM_ICON} @{tg_username} | "
-            f"{X_ICON} {x_display}\n"
-        )
+        # Add clickable links if user has any
+        links = row.get("links") or []
+        for idx, link in enumerate(links, start=1):
+            if not link.startswith(("http://", "https://")):
+                link = f"https://{link}"
+            user_list_text += f"   link{idx}: <a href='{link}'>{link}</a>\n"
 
+        user_list_text += "\n"  # empty line after each user
         srno += 1
         count += 1
 
-        # 📤 Send in batches of 80
-        if count % 80 == 0:
+        # Send in batches of 50 users to avoid Telegram limits
+        if count % 50 == 0:
             await update.message.reply_text(
                 user_list_text,
                 parse_mode="HTML",
-                disable_web_page_preview=True
+                disable_web_page_preview=False
             )
             user_list_text = "<b>Users List:</b>\n"
 
-    # 📤 Remaining users
+    # Send remaining users
     if user_list_text.strip():
         await update.message.reply_text(
             user_list_text,
             parse_mode="HTML",
-            disable_web_page_preview=True
+            disable_web_page_preview=False
         )
 
 
