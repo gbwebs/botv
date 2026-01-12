@@ -6,6 +6,7 @@ import logging
 import re
 import os
 from db.database import  fetchrow, fetch, execute
+from db.queries import clear_users_table
 
 
 
@@ -55,7 +56,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     chat_id = update.effective_chat.id
-
+    # 🧹 Clear previous users
+    await clear_users_table()
+    
     # 🔁 Update Group Name
     try:
         await context.bot.set_chat_title(
