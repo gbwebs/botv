@@ -373,49 +373,70 @@ async def show_ad_completed(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text("❌ No users have completed task yet.")
 
-# Command to show unsafe users
-
-def format_x_value(x_value):
-    if not x_value:
-        return "NA"
-
-    if x_value.startswith("http"):
-        return f'<a href="{x_value}">Link</a>'
-
-    return f"@{x_value}"
-
-
 async def show_unsafe_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # 🔐 Admin check
     if not await is_admin(update):
         STICKER_ID = "CAACAgUAAxkBAAICLWfAVQEf_k6dGDuoUbGDUrcng0BlAAJWBQACDLDZVke9Qr6WRu8KNgQ"
         await context.bot.send_sticker(update.effective_chat.id, STICKER_ID)
         return
 
-    if not unsafe_users:
-        await context.bot.send_message(
-            update.effective_chat.id,
-            "All users are safe."
-        )
-        return
+    chat_id = update.effective_chat.id
 
-    lines = ["Unsafe Users:"]
-
-    for idx, data in enumerate(unsafe_users.values(), start=1):
-        tg_username = data.get("username", "Unknown")
-        x_display = format_x_value(data.get("x_username"))
-
-        lines.append(
-            f"{idx}. @{tg_username} | X:{x_display}"
-        )
-
-    await context.bot.send_message(
-        chat_id=update.effective_chat.id,
-        text="\n".join(lines),
-        parse_mode="HTML",
-        disable_web_page_preview=True
+    # 📥 Fetch unsafe users from DB (status != safe)
+    rows = await fetch(
+        """
+        SELECT username, x_username
+        FROM users
+        WHERE chat_id = $1 AND status != 'safe'
+        ORDER BY created_at ASC
+        """,
+        chat_id
     )
 
+    if not rows:
+        await context.bot.send_message(chat_id, "All users are safe.")
+        return
 
+    TELEGRAM_ICON = "💬"
+    X_ICON = "𝕏"
+
+    def format_x_value(x_value):
+        if not x_value:
+            return "NA"
+        if x_value.startswith(("http://", "https://")):
+            return f'<a href="{x_value}">Link</a>'
+        return f"@{x_value}"
+
+    lines = ["<b>Unsafe Users:</b>"]
+    count = 0
+    srno = 1
+
+    for row in rows:
+        tg_username = row["username"] or "Unknown"
+        x_display = format_x_value(row["x_username"])
+
+        lines.append(f"{srno}. {TELEGRAM_ICON} @{tg_username} | {X_ICON}: {x_display}")
+        srno += 1
+        count += 1
+
+        # 📤 Send in batches of 80
+        if count % 80 == 0:
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text="\n".join(lines),
+                parse_mode="HTML",
+                disable_web_page_preview=True
+            )
+            lines = ["<b>Unsafe Users:</b>"]
+
+    # 📤 Send remaining users
+    if lines:
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="\n".join(lines),
+            parse_mode="HTML",
+            disable_web_page_preview=True
+        )
 
 async def show_link_counts(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
@@ -528,27 +549,44 @@ async def multiple_links(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def user_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    # 🔐 Admin check
     if not await is_admin(update):
         await update.message.reply_text("🚫 Unauthorized access attempt!")
         return
 
-    if not link_counts:
+    chat_id = update.effective_chat.id
+
+    # 📥 Fetch users who shared at least 1 link
+    rows = await fetch(
+        """
+        SELECT
+            username,
+            x_username
+        FROM users
+        WHERE chat_id = $1 AND link_count > 0
+        ORDER BY created_at ASC
+        """,
+        chat_id
+    )
+
+    if not rows:
         await update.message.reply_text("🔴 No users found!")
         return
 
     TELEGRAM_ICON = "💬"
     X_ICON = "𝕏"
 
-    user_list_text = "Users List:\n"
-    user_count = 0
+    user_list_text = "<b>Users List:</b>\n"
+    count = 0
+    srno = 1
 
-    for data in link_counts.values():
-        srno = data.get("srno")
-        tg_username = data.get("username", "Unknown")
-        x_value = data.get("x_username")
+    for row in rows:
+        tg_username = row["username"] or "Unknown"
+        x_value = row["x_username"]
 
-        # Decide how to show X value
-        if x_value and x_value.startswith("http"):
+        # 🐦 Decide X display
+        if x_value and x_value.startswith(("http://", "https://")):
             x_display = f'<a href="{x_value}">Link</a>'
         elif x_value:
             x_display = f'@{x_value}'
@@ -560,24 +598,26 @@ async def user_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"{X_ICON} {x_display}\n"
         )
 
-        user_count += 1
+        srno += 1
+        count += 1
 
-        # Send in batches of 80
-        if user_count % 80 == 0:
+        # 📤 Send in batches of 80
+        if count % 80 == 0:
             await update.message.reply_text(
                 user_list_text,
                 parse_mode="HTML",
                 disable_web_page_preview=True
             )
-            user_list_text = "Users List:\n"
+            user_list_text = "<b>Users List:</b>\n"
 
-    # Send remaining users
+    # 📤 Remaining users
     if user_list_text.strip():
         await update.message.reply_text(
             user_list_text,
             parse_mode="HTML",
             disable_web_page_preview=True
         )
+
 
 async def show_checklist(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global link_counts
@@ -696,9 +736,7 @@ async def unmute_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text("✅ User unmuted")
 
-# Command to enable ad tracking
 async def start_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    global tracking_enabled
 
     # 🔐 Admin check
     if not await is_admin(update):
@@ -706,16 +744,24 @@ async def start_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_sticker(STICKER_ID)
         return
 
-    tracking_enabled = True
     chat_id = update.effective_chat.id
 
-    # 🕒 Time calculation (now + 1 hour)
-    # now = datetime.now(datetime.astimezone)
- 
+    # 🕒 Time (IST)
     now = datetime.utcnow() + timedelta(hours=5, minutes=30)
-    
     end_time = now + timedelta(hours=1)
-    end_time_str = end_time.strftime("%I:%M %p")  # e.g. 05:30 PM
+    end_time_str = end_time.strftime("%I:%M %p")
+
+    # 🧠 ENABLE TRACKING (DB)
+    await execute(
+        """
+        UPDATE sessionsdata
+        SET tracking_enabled = true,
+            end_time = $2
+        WHERE chat_id = $1
+        """,
+        chat_id,
+        end_time
+    )
 
     # 🔁 Update Group Name → CLOSED
     try:
@@ -724,9 +770,9 @@ async def start_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
             title="VERIFIED LIKE GC [CLOSED]"
         )
     except Exception as e:
-        print("Failed to update group title:", e)
+        logger.warning(f"Group title update failed: {e}")
 
-    # 🔒 Change permissions (TEXT ONLY)
+    # 🔒 Change permissions
     try:
         await context.bot.set_chat_permissions(
             chat_id=chat_id,
@@ -744,19 +790,20 @@ async def start_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         )
     except Exception as e:
-        print("Failed to update permissions:", e)
+        logger.warning(f"Permission update failed: {e}")
 
-    # 📢 Message
+    # 📢 Announcement
     msg = await update.message.reply_text(
-        "📢 Timeline Updated 👇\n\n"
+        "📢 *Timeline Updated* 👇\n\n"
         "🔗 x.com/glamm__girl\n\n"
         "❤️ Like all posts of the TL account\n"
-        "📝 Drop All done in the group after completion\n\n"
-        f"⏰ Last time for activity: {end_time_str}\n\n"
-        "✅ Tracking words: done, ad, all done"
+        "📝 Drop *All done* in the group after completion\n\n"
+        f"⏰ *Last time for activity:* `{end_time_str}`\n\n"
+        "✅ *Tracking words:* done, ad, all done",
+        parse_mode=telegram.constants.ParseMode.MARKDOWN_V2
     )
 
-    # 📌 Pin the message
+    # 📌 Pin message
     try:
         await context.bot.pin_chat_message(
             chat_id=chat_id,
@@ -764,7 +811,8 @@ async def start_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
             disable_notification=True
         )
     except Exception as e:
-        print("Failed to pin message:", e)
+        logger.warning(f"Pin message failed: {e}")
+
 
 # Command to stop ad tracking (optional)
 async def stop_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
