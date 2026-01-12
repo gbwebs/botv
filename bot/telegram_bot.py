@@ -531,7 +531,7 @@ async def show_link_counts(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-async def multiple_links_db(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def multiple_links(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # 🔐 Admin check
     if not await is_admin(update):
         STICKER_ID = "CAACAgUAAxkBAAICLWfAVQEf_k6dGDuoUbGDUrcng0BlAAJWBQACDLDZVke9Qr6WRu8KNgQ"
