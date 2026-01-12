@@ -531,15 +531,32 @@ async def show_link_counts(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-async def multiple_links(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def multiple_links_db(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # 🔐 Admin check
     if not await is_admin(update):
         STICKER_ID = "CAACAgUAAxkBAAICLWfAVQEf_k6dGDuoUbGDUrcng0BlAAJWBQACDLDZVke9Qr6WRu8KNgQ"
         await update.message.reply_sticker(STICKER_ID)
         return
 
-    if not link_counts:
-        await update.message.reply_text("No one shared links yet!")
+    chat_id = update.effective_chat.id
+
+    # 📥 Fetch users with more than 1 link
+    rows = await fetch(
+        """
+        SELECT u.id, u.tg_user_id, u.username, u.full_name, u.x_username, COUNT(l.id) AS link_count,
+               ARRAY_AGG(l.url) AS links
+        FROM users u
+        JOIN links l ON l.user_id = u.id
+        WHERE u.chat_id = $1
+        GROUP BY u.id
+        HAVING COUNT(l.id) > 1
+        ORDER BY u.id ASC
+        """,
+        chat_id
+    )
+
+    if not rows:
+        await update.message.reply_text("No users with multiple links found.")
         return
 
     def format_x_username(x_value):
@@ -551,7 +568,7 @@ async def multiple_links(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # clean username
         if x_value.startswith(("http://", "https://")):
-            username = x_value.rstrip("/").split("/")[-1]
+            username = x_value.rstrip("/").split("/")[-1].split("?")[0]
         else:
             username = x_value.lstrip("@")
 
@@ -559,42 +576,44 @@ async def multiple_links(update: Update, context: ContextTypes.DEFAULT_TYPE):
         link = f"https://x.com/{username}"
         return f'<a href="{link}">{display}</a>'
 
-    response_lines = ["🚨 Users with 2 or more links 🚨\n"]
-    rows_added = False
+    TELEGRAM_ICON = "💬"
+    X_ICON = "𝕏"
+    lines = ["🚨 Users with 2 or more links 🚨\n"]
+    srno = 1
 
-    for data in link_counts.values():
-        links = data.get("links", [])
-        if len(links) < 2:
-            continue  # skip users with < 2 links
+    for row in rows:
+        # Telegram display
+        display_name = f"@{row['username']}" if row['username'] else row['full_name']
 
-        rows_added = True
+        # X clickable
+        x_display = format_x_username(row['x_username'])
 
-        # Telegram username or fallback name
-        tg_username = data.get("username")
-        display_name = f"@{tg_username}" if tg_username else data.get("name", "Unknown")
+        lines.append(f"{srno}. {TELEGRAM_ICON} {display_name} | {X_ICON}: {x_display}")
 
-        # X username clickable
-        x_display = format_x_username(data.get("x_username"))
-
-        response_lines.append(f"{data['srno']}. {display_name} | X: {x_display}")
-
-        # Add each link as clickable
-        for idx, link in enumerate(links, start=1):
+        # Links list
+        for idx, link in enumerate(row['links'], start=1):
             if not link.startswith(("http://", "https://")):
                 link = f"https://{link}"  # ensure clickable
-            response_lines.append(f"   {idx}. <a href=\"{link}\">{link}</a>")
-        response_lines.append("")  # empty line after each user
+            lines.append(f"   {idx}. <a href='{link}'>{link}</a>")
+        lines.append("")  # empty line after each user
+        srno += 1
 
-    if not rows_added:
-        await update.message.reply_text("No users with 2 or more links found.")
-        return
+        # 📤 Send in batches of 50 users to avoid Telegram limits
+        if srno % 50 == 0:
+            await update.message.reply_text(
+                "\n".join(lines),
+                parse_mode="HTML",
+                disable_web_page_preview=False
+            )
+            lines = ["🚨 Users with 2 or more links 🚨\n"]
 
-    # Send the final message
-    await update.message.reply_text(
-        "\n".join(response_lines),
-        parse_mode="HTML",
-        disable_web_page_preview=False
-    )
+    # Send remaining users
+    if lines:
+        await update.message.reply_text(
+            "\n".join(lines),
+            parse_mode="HTML",
+            disable_web_page_preview=False
+        )
 
 
 async def user_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
