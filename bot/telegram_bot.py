@@ -532,7 +532,7 @@ async def show_link_counts(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def multiple_links(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Admin check
+    # 🔐 Admin check
     if not await is_admin(update):
         STICKER_ID = "CAACAgUAAxkBAAICLWfAVQEf_k6dGDuoUbGDUrcng0BlAAJWBQACDLDZVke9Qr6WRu8KNgQ"
         await update.message.reply_sticker(STICKER_ID)
@@ -542,49 +542,59 @@ async def multiple_links(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("No one shared links yet!")
         return
 
-    response_text = "🚨 Users with multiple links or duplicate X usernames 🚨\n\n"
+    def format_x_username(x_value):
+        # fallback dummy
+        if not x_value:
+            display = "@i"
+            link = "https://x.com/i"
+            return f'<a href="{link}">{display}</a>'
+
+        # clean username
+        if x_value.startswith(("http://", "https://")):
+            username = x_value.rstrip("/").split("/")[-1]
+        else:
+            username = x_value.lstrip("@")
+
+        display = f"@{username}"
+        link = f"https://x.com/{username}"
+        return f'<a href="{link}">{display}</a>'
+
+    response_lines = ["🚨 Users with 2 or more links 🚨\n"]
     rows_added = False
 
     for data in link_counts.values():
-        link_count = data.get("link_count", 0)
-        x_username = data.get("x_username")
         links = data.get("links", [])
-
-        include = False
-
-        # multiple links
-        if link_count > 1:
-            include = True
-
-        # duplicate X username
-        if x_username:
-            same_x_users = [
-                u for u in link_counts.values()
-                if u.get("x_username") == x_username
-            ]
-            if len(same_x_users) > 1:
-                include = True
-
-        if not include:
-            continue
+        if len(links) < 2:
+            continue  # skip users with < 2 links
 
         rows_added = True
 
-        # BEST display name: TG username else full name
-        display_name = f"@{data['username']}" if data.get("username") else data.get("name", "Unknown")
+        # Telegram username or fallback name
+        tg_username = data.get("username")
+        display_name = f"@{tg_username}" if tg_username else data.get("name", "Unknown")
 
-        # Add user info and all their links
-        response_text += f"{data['srno']}. {display_name} | X: @{x_username or 'NA'}\n"
+        # X username clickable
+        x_display = format_x_username(data.get("x_username"))
+
+        response_lines.append(f"{data['srno']}. {display_name} | X: {x_display}")
+
+        # Add each link as clickable
         for idx, link in enumerate(links, start=1):
-            response_text += f"   {idx}. {link}\n"
-        response_text += "\n"  # empty line after each user
+            if not link.startswith(("http://", "https://")):
+                link = f"https://{link}"  # ensure clickable
+            response_lines.append(f"   {idx}. <a href=\"{link}\">{link}</a>")
+        response_lines.append("")  # empty line after each user
 
     if not rows_added:
-        await update.message.reply_text("No multiple or duplicate X users found.")
+        await update.message.reply_text("No users with 2 or more links found.")
         return
 
     # Send the final message
-    await update.message.reply_text(response_text)
+    await update.message.reply_text(
+        "\n".join(response_lines),
+        parse_mode="HTML",
+        disable_web_page_preview=False
+    )
 
 
 async def user_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
