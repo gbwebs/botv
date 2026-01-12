@@ -699,13 +699,29 @@ async def show_checklist(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text("❌ No users found in the list.")
 
+
 async def mute_all_unsafe_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    # 🔐 Admin check
     if not await is_admin(update):
         STICKER_ID = "CAACAgUAAxkBAAICLWfAVQEf_k6dGDuoUbGDUrcng0BlAAJWBQACDLDZVke9Qr6WRu8KNgQ"
         await update.message.reply_sticker(STICKER_ID)
         return
 
-    if not unsafe_users:
+    chat_id = update.effective_chat.id
+
+    # 📥 Fetch unsafe users from DB
+    rows = await fetch(
+        """
+        SELECT tg_user_id
+        FROM users
+        WHERE chat_id = $1
+          AND status != 'safe'
+        """,
+        chat_id
+    )
+
+    if not rows:
         await update.message.reply_text("No unsafe users to mute.")
         return
 
@@ -716,14 +732,16 @@ async def mute_all_unsafe_users(update: Update, context: ContextTypes.DEFAULT_TY
         await update.message.reply_text("Bot needs Manage Members permission.")
         return
 
-    # 🔒 DEFAULT MUTE DURATION → 5 DAYS
+    # 🔒 Mute for 5 days
     mute_duration = timedelta(days=5)
     until_date = update.message.date + mute_duration
 
     muted = 0
     failed = 0
 
-    for user_id in list(unsafe_users.keys()):
+    for row in rows:
+        user_id = row["tg_user_id"]
+
         try:
             await context.bot.restrict_chat_member(
                 chat_id=chat.id,
@@ -736,34 +754,12 @@ async def mute_all_unsafe_users(update: Update, context: ContextTypes.DEFAULT_TY
             failed += 1
 
     await update.message.reply_text(
-        f"Muted {muted} unsafe users"
-        + (f"\nFailed: {failed}" if failed else "")
+        f"🔇 Muted {muted} unsafe users"
+        + (f"\n⚠️ Failed: {failed}" if failed else "")
     )
 
     await lock_chat(update, context)
 
-
-
-async def mute_user(update, context):
-    if not await is_admin(update):
-        await update.message.reply_text("🚫 Admin only")
-        return
-
-    if not update.message.reply_to_message:
-        await update.message.reply_text("❌ Reply to a user to mute them")
-        return
-
-    user_id = update.message.reply_to_message.from_user.id
-
-    # Mute for 5 days
-    await context.bot.restrict_chat_member(
-        chat_id=update.effective_chat.id,
-        user_id=user_id,
-        permissions=ChatPermissions(can_send_messages=False),
-        until_date=update.message.date + timedelta(days=5)
-    )
-
-    await update.message.reply_text("✅ User muted for 5 days")
 
 
 
