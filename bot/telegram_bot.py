@@ -9,7 +9,8 @@ from db.database import  fetchrow, fetch, execute
 from db.queries import clear_users_table
 
 
-
+STICKER_ID = "CAACAgUAAyEFAASTkH2lAAIHYmlk2ZDc2iPLdu937TRlZJ_HBM_iAAJwBQACGaHQVoMurXyOHE5EOAQ"
+STICKER_ID2 = "CAACAgUAAyEFAASTkH2lAAIHaGlk2gYu9vHBnjEpuKwaFZJ24n2VAAIdBAACJoPRVlTIdBwP0bBVOAQ"
 def escape_markdown_v2(text):
     escape_chars = r"_*[]()~`>#+-=|{}.!?"
     return "".join(f"\\{char}" if char in escape_chars else char for char in text)
@@ -101,8 +102,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         """,
         chat_id
     )
-    STICKER_ID = "CAACAgUAAxkBAAICLWfAVQEf_k6dGDuoUbGDUrcng0BlAAJWBQACDLDZVke9Qr6WRu8KNgQ"
-    await update.message.reply_sticker(STICKER_ID)
+  
+    await context.bot.send_sticker(
+        chat_id=update.effective_chat.id,
+        sticker=STICKER_ID
+    )
     # 📌 Info message
     msg = await update.message.reply_text(
         "🚀 *Session Started!*\n\n"
@@ -861,6 +865,12 @@ async def start_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     except Exception as e:
         logger.warning(f"Permission update failed: {e}")
+
+
+    await context.bot.send_sticker(
+        chat_id=update.effective_chat.id,
+        sticker=STICKER_ID2
+    )
 
     # 📢 Announcement
     msg = await update.message.reply_text(
