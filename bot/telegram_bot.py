@@ -1,3 +1,4 @@
+from turtle import update
 from telegram import Update, Chat, ChatPermissions
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from datetime import datetime, timedelta
@@ -57,7 +58,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     chat_id = update.effective_chat.id
     # 🧹 Clear previous users
-    await clear_users_table()
+    await clear_users_table(chat_id)
 
     # 🔁 Update Group Name
     try:
@@ -101,13 +102,16 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         """,
         chat_id
     )
-
+    STICKER_ID = "CAACAgUAAxkBAAICLWfAVQEf_k6dGDuoUbGDUrcng0BlAAJWBQACDLDZVke9Qr6WRu8KNgQ"
+    await update.message.reply_sticker(STICKER_ID)
     # 📌 Info message
     msg = await update.message.reply_text(
-        "🚀 *Session Started Successfully!*\n\n"
-        "🔗 Send your links below",
+        "🚀 *Session Started!*\n\n"
+        "✨ You’re all set.\n"
+        "🔗 Send your links below to continue.",
         parse_mode="Markdown"
     )
+
 
     # 📌 Pin the message
     try:
@@ -671,34 +675,34 @@ async def user_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 
-async def show_checklist(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    global link_counts
-
+async def clear_chat_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # 🔐 Admin check
     if not await is_admin(update):
-        STICKER_ID = "CAACAgUAAxkBAAICLWfAVQEf_k6dGDuoUbGDUrcng0BlAAJWBQACDLDZVke9Qr6WRu8KNgQ"
+        await update.message.reply_text("🚫 Admin only command")
+        return
 
-        await update.message.reply_sticker(STICKER_ID)  # Send sticker
-        return  # Stop execution if user is not an admin
-    # Create a list to store the checklist entries
-    checklist = []
+    chat_id = update.effective_chat.id
 
-    # Loop through all users and their data in link_counts
-    for user_data in link_counts.values():
-        srno = user_data["srno"]
-        name = user_data["name"]
-        ad_completed = "✅" if user_data.get("ad_count", 0) > 0 else "❌"
+    # 🧹 Clear links first, then users (FK safe)
+    await execute(
+        """
+        DELETE FROM links
+        WHERE user_id IN (
+            SELECT id FROM users WHERE chat_id = $1
+        )
+        """,
+        chat_id
+    )
 
-        checklist.append(f"{srno}. {name} - {ad_completed}")
+    await execute(
+        "DELETE FROM users WHERE chat_id = $1",
+        chat_id
+    )
 
-    # Join all the entries into a single string
-    checklist_text = "\n".join(checklist)
-
-    # Send the checklist as a message
-    if checklist_text:
-        await update.message.reply_text(f"📋 Checklist:\n{checklist_text}")
-    else:
-        await update.message.reply_text("❌ No users found in the list.")
-
+    await update.message.reply_text(
+        "🧹 <b>All chat data cleared successfully</b>",
+        parse_mode="HTML"
+    )
 
 async def mute_all_unsafe_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
@@ -864,15 +868,16 @@ async def start_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # Command to stop ad tracking (optional)
 async def stop_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    global tracking_enabled
-
-    # Check if the user is an admin
     if not await is_admin(update):
-        await update.message.reply_text("You are not authorized to use this command.")
         return
 
-    tracking_enabled = False
-    await update.message.reply_text("Ad trackinghas been deactivated!")
+    await execute(
+        "UPDATE sessionsdata SET tracking_enabled=false WHERE chat_id=$1",
+        update.effective_chat.id
+    )
+
+    await update.message.reply_text("🛑 Ad tracking stopped")
+
 
 
 async def get_user_id(context: ContextTypes.DEFAULT_TYPE, username: str):
@@ -991,7 +996,7 @@ def build_bot():
     application.add_handler(CommandHandler("mult", multiple_links))
     application.add_handler(CommandHandler("list", user_list))
     application.add_handler(CommandHandler("count_ad", show_ad_completed))
-    application.add_handler(CommandHandler("testlist", show_checklist))
+    application.add_handler(CommandHandler("clear", clear_chat_data))
     application.add_handler(CommandHandler("muteall", mute_all_unsafe_users))
     application.add_handler(CommandHandler("kick", kick_user))
     application.add_handler(CommandHandler("l", lock_chat))
