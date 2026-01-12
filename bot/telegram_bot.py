@@ -763,7 +763,26 @@ async def mute_all_unsafe_users(update: Update, context: ContextTypes.DEFAULT_TY
 
     await lock_chat(update, context)
 
+async def mute_user(update, context):
+    if not await is_admin(update):
+        await update.message.reply_text("🚫 Admin only")
+        return
 
+    if not update.message.reply_to_message:
+        await update.message.reply_text("❌ Reply to a user to mute them")
+        return
+
+    user_id = update.message.reply_to_message.from_user.id
+
+    # Mute for 5 days
+    await context.bot.restrict_chat_member(
+        chat_id=update.effective_chat.id,
+        user_id=user_id,
+        permissions=ChatPermissions(can_send_messages=False),
+        until_date=update.message.date + timedelta(days=5)
+    )
+
+    await update.message.reply_text("✅ User muted for 5 days")
 
 
 async def unmute_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
