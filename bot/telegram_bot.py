@@ -10,21 +10,16 @@ from db.database import  fetchrow, fetch, execute
 
 
 def escape_markdown_v2(text):
-    escape_chars = r"_*[]()~`>#+-=|{}.!"
+    escape_chars = r"_*[]()~`>#+-=|{}.!?"
     return "".join(f"\\{char}" if char in escape_chars else char for char in text)
+
+
 # Enable logging
 logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.WARNING)
 logger = logging.getLogger(__name__)
 
-# Dictionary to store user link counts and unsafe users
-link_counts = {}
-unsafe_users = {}
-safe_users = {}
-# Add a global flag for tracking system
-tracking_enabled = False
 # Words to check for exact matches
-ad_words = {"ad", "all done", "AD", "all dn", "alldone","done"}
-
+ad_words = {"ad", "all done", "AD", "all dn", "alldone", "done"}
 
 excluded_users = {
     "OMEGA_908",
@@ -38,32 +33,26 @@ excluded_users = {
     "TumseKyaaMatlab",
     "Pandeyshanaya1",
     "ieshu07"
-
 }
+
 
 async def is_admin(update: Update) -> bool:
     chat = update.effective_chat
     user_id = update.message.from_user.id
-    # Fetch chat administrators and check if the user is one of them
     admins = await chat.get_administrators()
-    for admin in admins:
-        if admin.user.id == user_id:
-            return True
-    return False
+    return any(admin.user.id == user_id for admin in admins)
 
-# Start command to reset all counts
+
+# =========================
+# START / OPEN SESSION
+# =========================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-    # Check admin
+    # 🔐 Admin check
     if not await is_admin(update):
         STICKER_ID = "CAACAgUAAxkBAAICLWfAVQEf_k6dGDuoUbGDUrcng0BlAAJWBQACDLDZVke9Qr6WRu8KNgQ"
         await update.message.reply_sticker(STICKER_ID)
         return
-
-    global link_counts, unsafe_users, safe_users
-    link_counts = {}
-    unsafe_users = {}
-    safe_users = {}
 
     chat_id = update.effective_chat.id
 
@@ -74,46 +63,47 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             title="VERIFIED LIKE GC [OPEN]"
         )
     except Exception as e:
-        print("Failed to update group title:", e)
+        logger.warning(f"Group title update failed: {e}")
 
     # 🔒 Change permissions → TEXT ONLY
     try:
         await context.bot.set_chat_permissions(
-            chat_id=update.effective_chat.id,
+            chat_id=chat_id,
             permissions=ChatPermissions(
-            can_send_messages=True,
-            can_send_audios=False,      
-            can_send_documents=False,
-            can_send_photos=False,
-            can_send_videos=False,
-            can_send_video_notes=False,
-            can_send_voice_notes=False,
-            can_send_polls=False,
-            can_send_other_messages=False,
-            can_add_web_page_previews=False
+                can_send_messages=True,
+                can_send_audios=False,
+                can_send_documents=False,
+                can_send_photos=False,
+                can_send_videos=False,
+                can_send_video_notes=False,
+                can_send_voice_notes=False,
+                can_send_polls=False,
+                can_send_other_messages=False,
+                can_add_web_page_previews=False
             )
         )
-
     except Exception as e:
-        print("Failed to update permissions:", e)
+        logger.warning(f"Permission update failed: {e}")
 
+    # 🧠 SESSION RESET (DATABASE ONLY)
     await execute(
         """
-        INSERT INTO public.sessionsdata (chat_id, tracking_enabled)
-        VALUES ($1, false)
+        INSERT INTO sessionsdata (chat_id, tracking_enabled, start_time, end_time)
+        VALUES ($1, false, NOW(), NULL)
         ON CONFLICT (chat_id)
         DO UPDATE SET
-            tracking_enabled=false,
-            start_time=NOW(),
-            end_time=NULL
+            tracking_enabled = false,
+            start_time = NOW(),
+            end_time = NULL
         """,
         chat_id
     )
 
-    # 📌 Stylish message
+    # 📌 Info message
     msg = await update.message.reply_text(
-        "🚀 Session Started Successfully!\n\n"
-        "🔗 Send your links below\n"
+        "🚀 *Session Started Successfully!*\n\n"
+        "🔗 Send your links below",
+        parse_mode="Markdown"
     )
 
     # 📌 Pin the message
@@ -124,201 +114,146 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             disable_notification=True
         )
     except Exception as e:
-        print("Failed to pin message:", e)
+        logger.warning(f"Pin message failed: {e}")
 
 
 # Message handler to count messages with links
+# =========================
+# COUNT LINKS (DB BASED)
+# =========================
 async def count_links(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    global link_counts, unsafe_users, safe_users, excluded_users
 
-    if not update.message:
+    if not update.message or not update.message.entities:
         return
 
     user = update.message.from_user
+    chat_id = update.effective_chat.id
     user_id = user.id
-    user_full_name = user.full_name
-    user_username = user.username or "NoUsername"
+    full_name = user.full_name
+    username = user.username or "NoUsername"
 
-    # Skip excluded users
-    if user_username in excluded_users:
-        return
-
-    # Init user
-    if user_id not in link_counts:
-        link_counts[user_id] = {
-            "srno": len(link_counts) + 1,
-            "name": user_full_name,
-            "username": user_username,
-            "x_username": None,
-            "link_count": 0,
-            "ad_count": 0,
-            "links": []  # NEW: store all links
-        }
-
-    if not update.message.entities:
+    # 🚫 Skip excluded users
+    if username in excluded_users:
         return
 
     for entity in update.message.entities:
-        if entity.type not in ["url", "text_link"]:
+        if entity.type not in ("url", "text_link"):
             continue
 
-        # Extract URL
-        url = update.message.text[entity.offset:entity.offset + entity.length]
+        # 🔗 Extract URL
+        url = update.message.text[entity.offset: entity.offset + entity.length]
 
-        # Extract X username
+        # 🐦 Extract X username
         x_username = None
         try:
             if "twitter.com/" in url:
                 x_username = url.split("twitter.com/")[-1].split("/")[0].split("?")[0]
             elif "x.com/" in url:
                 x_username = url.split("x.com/")[-1].split("/")[0].split("?")[0]
-        except:
-            x_username = None
+        except Exception:
+            pass
 
-        # ❗ INVALID usernames (like i, status, etc.)
         INVALID_X = {"i", "status", ""}
 
-        # SAVE ONLY ONCE
-        if not link_counts[user_id].get("x_username"):
-            if x_username and x_username not in INVALID_X:
-                # ✅ store username
-                link_counts[user_id]["x_username"] = f"{x_username}"
-            else:
-                # ✅ store clickable link
-                link_counts[user_id]["x_username"] = url
+        if not x_username or x_username in INVALID_X:
+            x_username = None
 
-        # Increment link count ALWAYS
-        link_counts[user_id]["link_count"] += 1
-
-        # Add the link to the list
-        if url not in link_counts[user_id]["links"]:
-            link_counts[user_id]["links"].append(url)
-
-        # Mark unsafe initially
-        if user_id not in unsafe_users and user_id not in safe_users:
-            unsafe_users[user_id] = {
-                "srno": link_counts[user_id]["srno"],
-                "name": user_full_name,
-                "username": user_username,
-                "x_username": link_counts[user_id]["x_username"],
-                "links": link_counts[user_id]["links"],
-            }
-        # DB: upsert user
+        # 🧠 UPSERT USER (LINK COUNT + X USERNAME)
         user_row = await fetchrow(
             """
-            INSERT INTO users (chat_id, tg_user_id, username, full_name, x_username, link_count)
-            VALUES ($1,$2,$3,$4,$5,1)
+            INSERT INTO users (chat_id, tg_user_id, username, full_name, x_username, link_count, status)
+            VALUES ($1,$2,$3,$4,$5,1,'unsafe')
             ON CONFLICT (chat_id, tg_user_id)
             DO UPDATE SET
                 link_count = users.link_count + 1,
                 x_username = COALESCE(users.x_username, EXCLUDED.x_username)
-            RETURNING id
+            RETURNING id, link_count
             """,
-            update.effective_chat.id,
+            chat_id,
             user_id,
-            user_username,
-            user_full_name,
-            link_counts[user_id]["x_username"]
+            username,
+            full_name,
+            x_username
         )
 
-        # DB: store link
+        # 🧾 STORE LINK
         await execute(
             "INSERT INTO links (user_id, url) VALUES ($1,$2)",
             user_row["id"],
             url
         )
 
-
-        # ⚠️ Alert ONLY if more than 1 link
-        if link_counts[user_id]["link_count"] > 1:
-            mention = f"@{user_username}" if user.username else user_full_name
+        # ⚠️ ALERT: more than 1 link
+        if user_row["link_count"] > 1:
+            mention = f"@{username}" if user.username else full_name
             await update.message.reply_text(
                 f"⚠️ Alert: {mention} shared more than one link."
             )
 
-        break  # one link per message
+        break  # ✅ One link per message
 
 async def count_ad_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    global link_counts, unsafe_users, safe_users
 
-    if not update.message or not tracking_enabled:
+    if not update.message:
         return
 
+    chat_id = update.effective_chat.id
     user = update.message.from_user
     user_id = user.id
 
-    # user must already exist
-    if user_id not in link_counts:
+    # 🧠 Check if tracking is enabled for this chat
+    session = await fetchrow(
+        "SELECT tracking_enabled FROM sessionsdata WHERE chat_id=$1",
+        chat_id
+    )
+
+    if not session or not session["tracking_enabled"]:
         return
 
-    # combine text
-    text = (update.message.text or "") + " " + (update.message.caption or "")
+    # 📝 Combine text + caption
+    text = f"{update.message.text or ''} {update.message.caption or ''}"
 
+    # 🔍 AD keyword match (exact word)
     ad_match = any(
         re.search(rf"\b{re.escape(word)}\b", text, re.IGNORECASE)
         for word in ad_words
     )
 
-    user_data = link_counts[user_id]
+    if not ad_match:
+        return
 
-    if ad_match:
-        # increment ad count
-        user_data["ad_count"] += 1
+    # ✅ Mark user SAFE in DB
+    row = await fetchrow(
+        """
+        UPDATE users
+        SET ad_count = ad_count + 1,
+            status = 'safe'
+        WHERE chat_id=$1 AND tg_user_id=$2
+        RETURNING x_username
+        """,
+        chat_id,
+        user_id
+    )
 
-        # remove from unsafe
-        unsafe_users.pop(user_id, None)
+    if not row:
+        return
 
-        # ✅ SAFE USER (FULL STRUCTURE)
-        safe_users[user_id] = {
-            "srno": user_data["srno"],
-            "name": user_data["name"],
-            "username": user_data["username"],
-            "x_username": user_data["x_username"],
-            "links": user_data["links"],
-        }
+    # 🐦 Display X username
+    x_username = row["x_username"]
 
-        x_username = user_data.get("x_username")
-
+    if x_username:
+        x_display = (
+            x_username
+            if x_username.startswith(("http://", "https://"))
+            else f"@{x_username}"
+        )
+    else:
         x_display = "Unknown"
 
-        # Case 1: x_username exists
-        if x_username:
-            # if username itself is a link
-            if x_username.startswith(("http://", "https://")):
-                x_display = x_username
-            else:
-                # normal username → show username + link
-                x_display = f"@{x_username}"
-
-        await update.message.reply_text(
-            f"𝕏 ID: {x_display}",
-            disable_web_page_preview=True
-        )
-
-        # DB: mark safe + increment ad count
-        await execute(
-            """
-            UPDATE users
-            SET ad_count = ad_count + 1,
-                status = 'safe'
-            WHERE chat_id=$1 AND tg_user_id=$2
-            """,
-            update.effective_chat.id,
-            user_id
-        )
-
-
-    else:
-        # ✅ UNSAFE USER (FULL STRUCTURE)
-        if user_id not in safe_users and user_id not in unsafe_users:
-            unsafe_users[user_id] = {
-                "srno": user_data["srno"],
-                "name": user_data["name"],
-                "username": user_data["username"],
-                "x_username": user_data["x_username"],
-                "links": user_data["links"],
-            }
-
+    await update.message.reply_text(
+        f"𝕏 ID: {x_display}",
+        disable_web_page_preview=True
+    )
 
 
 # Admin /sr command when replying to an AD message
@@ -482,43 +417,59 @@ async def show_unsafe_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 
-# Command to show link counts
 async def show_link_counts(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Check if the user is an admin
+
+    # 🔐 Admin check
     if not await is_admin(update):
         STICKER_ID = "CAACAgUAAxkBAAICLWfAVQEf_k6dGDuoUbGDUrcng0BlAAJWBQACDLDZVke9Qr6WRu8KNgQ"
+        await update.message.reply_sticker(STICKER_ID)
+        return
 
-        await update.message.reply_sticker(STICKER_ID)  # Send sticker
-        return  # Stop execution if user is not an admin
+    chat_id = update.effective_chat.id
 
-    if not link_counts:
+    # 📊 Fetch users who shared links
+    rows = await fetch(
+        """
+        SELECT username, link_count
+        FROM users
+        WHERE chat_id=$1 AND link_count > 0
+        ORDER BY link_count DESC
+        """,
+        chat_id
+    )
+
+    if not rows:
         await update.message.reply_text("No links counted yet!")
         return
 
-    # Count total users who shared links
-    total_users = sum(1 for data in link_counts.values() if data['link_count'] > 0)
+    # 👥 Total users
+    total_users = len(rows)
 
-    # Find users who shared more than 2 links
-    users_with_more_than_2_links = [
-        f"🔗 @{escape_markdown_v2(data['username'])} → *{escape_markdown_v2(str(data['link_count']))}* links"
-        for data in link_counts.values()
-        if data['link_count'] > 1
+    # 🔗 Users with more than 1 link
+    users_with_more_than_1 = [
+        f"🔗 @{escape_markdown_v2(row['username'] or 'NoUsername')} → *{escape_markdown_v2(str(row['link_count']))}* links"
+        for row in rows
+        if row["link_count"] > 1
     ]
 
-    # Construct the message with escaped characters
+    # 🧾 Message
     counts_text = (
-        f"📊 *Link Tracking Report*\n"
-        f"━━━━━━━━━━━━━━━━━━\n"
+        "📊 *Link Tracking Report*\n"
+        "━━━━━━━━━━━━━━━━━━\n"
         f"👥 *Total Users with Links:* `{escape_markdown_v2(str(total_users))}`\n"
-        f"━━━━━━━━━━━━━━━━━━\n"
+        "━━━━━━━━━━━━━━━━━━\n"
     )
 
-    if users_with_more_than_2_links:
-        counts_text += "\n".join(users_with_more_than_2_links)
+    if users_with_more_than_1:
+        counts_text += "\n".join(users_with_more_than_1)
     else:
-        counts_text += "✅ No users with more than 1 links"
+        counts_text += "✅ No users with more than 1 link"
 
-    await update.message.reply_text(counts_text, parse_mode=telegram.constants.ParseMode.MARKDOWN_V2)
+    await update.message.reply_text(
+        counts_text,
+        parse_mode=telegram.constants.ParseMode.MARKDOWN_V2
+    )
+
 
 async def multiple_links(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Admin check
