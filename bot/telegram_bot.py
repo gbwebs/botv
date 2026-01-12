@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 ad_words = {"ad", "all done", "AD", "all dn", "alldone", "done"}
 
 excluded_users = {
-    "OMEGA_908",
+    "OMEGA_9082",
     "Mehunnaa11",
     "hectorthisside",
     "RealRavY",
@@ -574,7 +574,7 @@ async def multiple_links(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for idx, link in enumerate(links, start=1):
             if not link.startswith(("http://", "https://")):
                 link = f"https://{link}"  # ensure clickable
-            lines.append(f"   link{idx}: <a href='{link}'>link{idx}</a>")
+            lines.append(f"<a href='{link}'>@link{idx}</a>")
 
         lines.append("")  # empty line after each user
         srno += 1
@@ -584,7 +584,7 @@ async def multiple_links(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(
                 "\n".join(lines),
                 parse_mode="HTML",
-                disable_web_page_preview=False
+                disable_web_page_preview=True
             )
             lines = ["🚨 Users with more than 2 links 🚨\n"]
 
@@ -593,7 +593,7 @@ async def multiple_links(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             "\n".join(lines),
             parse_mode="HTML",
-            disable_web_page_preview=False
+            disable_web_page_preview=True
         )
 
 
@@ -657,7 +657,7 @@ async def user_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(
                 user_list_text,
                 parse_mode="HTML",
-                disable_web_page_preview=False
+                disable_web_page_preview=True
             )
             user_list_text = "<b>Users List:</b>\n"
 
@@ -666,7 +666,7 @@ async def user_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             user_list_text,
             parse_mode="HTML",
-            disable_web_page_preview=False
+            disable_web_page_preview=True
         )
 
 
