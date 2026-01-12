@@ -204,7 +204,7 @@ async def count_ad_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.message.from_user
     user_id = user.id
 
-    # 🧠 Check if tracking is enabled for this chat
+    # 🧠 Check if tracking is enabled
     session = await fetchrow(
         "SELECT tracking_enabled FROM sessionsdata WHERE chat_id=$1",
         chat_id
@@ -216,7 +216,7 @@ async def count_ad_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # 📝 Combine text + caption
     text = f"{update.message.text or ''} {update.message.caption or ''}"
 
-    # 🔍 AD keyword match (exact word)
+    # 🔍 AD keyword match
     ad_match = any(
         re.search(rf"\b{re.escape(word)}\b", text, re.IGNORECASE)
         for word in ad_words
@@ -225,143 +225,166 @@ async def count_ad_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not ad_match:
         return
 
-    # ✅ Mark user SAFE in DB
-    row = await fetchrow(
+    # ✅ Mark SAFE + get x_username
+    user_row = await fetchrow(
         """
         UPDATE users
         SET ad_count = ad_count + 1,
             status = 'safe'
         WHERE chat_id=$1 AND tg_user_id=$2
-        RETURNING x_username
+        RETURNING id, x_username
         """,
         chat_id,
         user_id
     )
 
-    if not row:
+    if not user_row:
         return
 
-    # 🐦 Display X username
-    x_username = row["x_username"]
+    user_db_id = user_row["id"]
+    x_username = user_row["x_username"]
 
+    # 🔗 Get FIRST stored link (fixed for life)
+    link_row = await fetchrow(
+        """
+        SELECT url
+        FROM links
+        WHERE user_id=$1
+        ORDER BY id ASC
+        LIMIT 1
+        """,
+        user_db_id
+    )
+
+    first_link = link_row["url"] if link_row else None
+
+    # 🐦 Build display + click logic
     if x_username:
-        x_display = (
-            x_username
-            if x_username.startswith(("http://", "https://"))
-            else f"@{x_username}"
-        )
+        # real username → clickable profile
+        x_display = f'<a href="https://x.com/{x_username}">@{x_username}</a>'
+
+    elif first_link:
+        # no username → dummy @i → click opens first link
+        x_display = f'<a href="{first_link}">@i</a>'
+
     else:
         x_display = "Unknown"
 
     await update.message.reply_text(
         f"𝕏 ID: {x_display}",
+        parse_mode="HTML",
         disable_web_page_preview=True
     )
 
-
-# Admin /sr command when replying to an AD message
 async def sr_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    global safe_users, unsafe_users, link_counts
 
+    # 🔐 Admin check
     if not await is_admin(update):
         await update.message.reply_text("🚫 Unauthorized")
         return
 
+    # 🧾 Must reply to user's message
     if not update.message.reply_to_message:
         await update.message.reply_text("❌ Reply to a user's AD message with /sr")
         return
 
+    chat_id = update.effective_chat.id
     replied_user = update.message.reply_to_message.from_user
     user_id = replied_user.id
+    username = replied_user.username or replied_user.full_name
 
-    if user_id not in link_counts:
-        await update.message.reply_text("ℹ️ User data not found.")
-        return
-
-    if user_id not in safe_users:
-        await update.message.reply_text("ℹ️ User is already unsafe.")
-        return
-
-    user_data = link_counts[user_id]
-
-    # Reset ad count
-    user_data["ad_count"] = 0
-
-    # Move SAFE → UNSAFE
-    unsafe_users[user_id] = {
-        "srno": user_data["srno"],
-        "name": user_data["name"],
-        "username": user_data["username"],
-        "x_username": user_data["x_username"],
-        "links": user_data["links"],
-    }
-
-    safe_users.pop(user_id, None)
-
-    await execute(
-        "UPDATE users SET status='unsafe', ad_count=0 WHERE chat_id=$1 AND tg_user_id=$2",
-        update.effective_chat.id,
+    # 🔎 Check user exists + is SAFE
+    user_row = await fetchrow(
+        """
+        SELECT status
+        FROM users
+        WHERE chat_id=$1 AND tg_user_id=$2
+        """,
+        chat_id,
         user_id
     )
 
+    if not user_row:
+        await update.message.reply_text("ℹ️ User data not found.")
+        return
 
-    await update.message.reply_text(
-        f"⚠️ @{user_data['username']} has been marked **UNSAFE** again.\n\n"
-        "Your likes aren’t visible yet.\n"
-        "Kindly complete them or share a screen recording with your profile visible."
+    if user_row["status"] != "safe":
+        await update.message.reply_text("ℹ️ User is already unsafe.")
+        return
+
+    # 🔁 Reset to UNSAFE
+    await execute(
+        """
+        UPDATE users
+        SET status='unsafe',
+            ad_count=0
+        WHERE chat_id=$1 AND tg_user_id=$2
+        """,
+        chat_id,
+        user_id
     )
+
+    # ⚠️ Warning message
+    await update.message.reply_text(
+        f"⚠️ @{username} has been marked *UNSAFE* again.\n\n"
+        "Your likes aren’t visible yet.\n"
+        "Kindly complete them or share a screen recording with your profile visible.",
+        parse_mode="Markdown"
+    )
+
 
 async def ad_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
-    Admin command to mark a user as SAFE if they are currently in the UNSAFE list.
-    Usage: Reply to the user's message with /ad
+    Admin command to mark a user as SAFE
+    Usage: Reply to user's message with /ad
     """
-    global safe_users, unsafe_users, link_counts
 
     if not await is_admin(update):
         await update.message.reply_text("🚫 Unauthorized")
         return
 
     if not update.message.reply_to_message:
-        await update.message.reply_text("❌ Reply to a user's message with /ad to mark them safe")
+        await update.message.reply_text(
+            "❌ Reply to a user's message with /ad"
+        )
         return
 
     replied_user = update.message.reply_to_message.from_user
     user_id = replied_user.id
+    chat_id = update.effective_chat.id
 
-    if user_id not in link_counts:
-        await update.message.reply_text("ℹ️ User data not found.")
-        return
-
-    if user_id not in unsafe_users:
-        await update.message.reply_text("ℹ️ User is already safe.")
-        return
-
-    user_data = link_counts[user_id]
-
-    # Reset ad count
-    user_data["ad_count"] = 0
-
-    # Move UNSAFE → SAFE
-    safe_users[user_id] = {
-        "srno": user_data["srno"],
-        "name": user_data["name"],
-        "username": user_data["username"],
-        "x_username": user_data["x_username"],
-        "links": user_data["x_username"]
-    }
-
-    unsafe_users.pop(user_id, None)
-
-    await execute(
-        "UPDATE users SET status='safe', ad_count=0 WHERE chat_id=$1 AND tg_user_id=$2",
-        update.effective_chat.id,
+    # 🔍 Fetch user from DB
+    user = await fetchrow(
+        """
+        SELECT username, status
+        FROM users
+        WHERE chat_id=$1 AND tg_user_id=$2
+        """,
+        chat_id,
         user_id
     )
 
+    if not user:
+        await update.message.reply_text("ℹ️ User data not found.")
+        return
+
+    if user["status"] == "safe":
+        await update.message.reply_text("ℹ️ User is already SAFE.")
+        return
+
+    # ✅ Update user → SAFE
+    await execute(
+        """
+        UPDATE users
+        SET status='safe', ad_count=0
+        WHERE chat_id=$1 AND tg_user_id=$2
+        """,
+        chat_id,
+        user_id
+    )
 
     await update.message.reply_text(
-        f"✅ @{user_data['username']} has been marked SAFE!\n\n"
+        f"✅ @{user['username']} has been marked SAFE!"
     )
 
 async def show_ad_completed(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -385,13 +408,23 @@ async def show_unsafe_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     chat_id = update.effective_chat.id
 
-    # 📥 Fetch unsafe users from DB (status != safe)
+    # 📥 Fetch unsafe users + LAST link they sent
     rows = await fetch(
         """
-        SELECT username, x_username
-        FROM users
-        WHERE chat_id = $1 AND status != 'safe'
-         ORDER BY id ASC
+        SELECT
+            u.username,
+            l.url
+        FROM users u
+        LEFT JOIN LATERAL (
+            SELECT url
+            FROM links
+            WHERE user_id = u.id
+            ORDER BY id DESC
+            LIMIT 1
+        ) l ON TRUE
+        WHERE u.chat_id = $1
+          AND u.status != 'safe'
+        ORDER BY u.id ASC
         """,
         chat_id
     )
@@ -403,22 +436,25 @@ async def show_unsafe_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
     TELEGRAM_ICON = "💬"
     X_ICON = "𝕏"
 
-    def format_x_value(x_value):
-        if not x_value:
-            return "NA"
-        if x_value.startswith(("http://", "https://")):
-            return f'<a href="{x_value}">Link</a>'
-        return f"@{x_value}"
-
     lines = ["<b>Unsafe Users:</b>"]
     count = 0
     srno = 1
 
     for row in rows:
         tg_username = row["username"] or "Unknown"
-        x_display = format_x_value(row["x_username"])
+        last_link = row["url"]
 
-        lines.append(f"{srno}. {TELEGRAM_ICON} @{tg_username} | {X_ICON}: {x_display}")
+        # 👉 ALWAYS show @i
+        # 👉 clickable ONLY if link exists
+        if last_link:
+            x_display = f'<a href="{last_link}">@i</a>'
+        else:
+            x_display = "@i"
+
+        lines.append(
+            f"{srno}. {TELEGRAM_ICON} @{tg_username} | {X_ICON}: {x_display}"
+        )
+
         srno += 1
         count += 1
 
