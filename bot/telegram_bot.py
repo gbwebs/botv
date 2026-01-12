@@ -37,7 +37,8 @@ excluded_users = {
 }
 
 
-
+GC_TITLE_OPEN = "[OPEN]"
+GC_TITLE_LOCKED = "[LOCKED]"
 
 async def is_admin(update: Update) -> bool:
     chat = update.effective_chat
@@ -65,7 +66,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         await context.bot.set_chat_title(
             chat_id=chat_id,
-            title="VERIFIED LIKE GC [OPEN]"
+            title=GC_TITLE_OPEN
         )
     except Exception as e:
         logger.warning(f"Group title update failed: {e}")
@@ -843,7 +844,7 @@ async def start_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         await context.bot.set_chat_title(
             chat_id=chat_id,
-            title="VERIFIED LIKE GC [CLOSED]"
+            title=GC_TITLE_LOCKED
         )
     except Exception as e:
         logger.warning(f"Group title update failed: {e}")
