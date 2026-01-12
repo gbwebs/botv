@@ -58,7 +58,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     # 🧹 Clear previous users
     await clear_users_table()
-    
+
     # 🔁 Update Group Name
     try:
         await context.bot.set_chat_title(
@@ -391,7 +391,7 @@ async def show_unsafe_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
         SELECT username, x_username
         FROM users
         WHERE chat_id = $1 AND status != 'safe'
-        ORDER BY created_at ASC
+         ORDER BY id ASC
         """,
         chat_id
     )
@@ -568,7 +568,7 @@ async def user_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
             x_username
         FROM users
         WHERE chat_id = $1 AND link_count > 0
-        ORDER BY created_at ASC
+        ORDER BY id ASC
         """,
         chat_id
     )
@@ -797,13 +797,13 @@ async def start_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # 📢 Announcement
     msg = await update.message.reply_text(
-        "📢 *Timeline Updated* 👇\n\n"
-        "🔗 x.com/glamm__girl\n\n"
+        "📢 Timeline Updated 👇\n\n"
+        "🔗 https://x.com/glamm__girl\n\n"
         "❤️ Like all posts of the TL account\n"
-        "📝 Drop *All done* in the group after completion\n\n"
-        f"⏰ *Last time for activity:* `{end_time_str}`\n\n"
-        "✅ *Tracking words:* done, ad, all done",
-        parse_mode=telegram.constants.ParseMode.MARKDOWN_V2
+        "📝 Drop All done in the group after completion\n\n"
+        f"⏰ Last time for activity: {end_time_str}\n\n"
+        "✅ Tracking words: done, ad, all done",
+        disable_web_page_preview=True
     )
 
     # 📌 Pin message
