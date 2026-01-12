@@ -9,8 +9,7 @@ from db.database import  fetchrow, fetch, execute
 from db.queries import clear_users_table
 
 
-STICKER_ID = "CAACAgUAAyEFAASTkH2lAAIHYmlk2ZDc2iPLdu937TRlZJ_HBM_iAAJwBQACGaHQVoMurXyOHE5EOAQ"
-STICKER_ID2 = "CAACAgUAAyEFAASTkH2lAAIHaGlk2gYu9vHBnjEpuKwaFZJ24n2VAAIdBAACJoPRVlTIdBwP0bBVOAQ"
+
 def escape_markdown_v2(text):
     escape_chars = r"_*[]()~`>#+-=|{}.!?"
     return "".join(f"\\{char}" if char in escape_chars else char for char in text)
@@ -36,6 +35,8 @@ excluded_users = {
     "Pandeyshanaya1",
     "ieshu07"
 }
+
+
 
 
 async def is_admin(update: Update) -> bool:
@@ -102,7 +103,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         """,
         chat_id
     )
-  
+    STICKER_ID = "CAACAgUAAyEFAASTkH2lAAIHYmlk2ZDc2iPLdu937TRlZJ_HBM_iAAJwBQACGaHQVoMurXyOHE5EOAQ"
+
     await context.bot.send_sticker(
         chat_id=update.effective_chat.id,
         sticker=STICKER_ID
@@ -866,7 +868,7 @@ async def start_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.warning(f"Permission update failed: {e}")
 
-
+    STICKER_ID2 = "CAACAgUAAyEFAASTkH2lAAIHaGlk2gYu9vHBnjEpuKwaFZJ24n2VAAIdBAACJoPRVlTIdBwP0bBVOAQ"
     await context.bot.send_sticker(
         chat_id=update.effective_chat.id,
         sticker=STICKER_ID2
