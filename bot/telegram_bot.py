@@ -30,6 +30,7 @@ excluded_users = {
     "aditiraaaj",
     "Oyepriyankasun"
 }
+
 TL_X_LINK = "https://x.com/oyepriyankasun2"
 
 GC_TITLE_OPEN = "Superfast Likes !! [OPEN]"
