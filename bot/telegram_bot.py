@@ -35,10 +35,10 @@ excluded_users = {
     "Pandeyshanaya1",
     "ieshu07"
 }
+TL_X_LINK = "https://x.com/oyepriyankasun2"
 
-
-GC_TITLE_OPEN = "[OPEN]"
-GC_TITLE_LOCKED = "[LOCKED]"
+GC_TITLE_OPEN = "Superfast Likes !! [OPEN]"
+GC_TITLE_LOCKED = "Superfast Likes !![CLOSED]"
 
 async def is_admin(update: Update) -> bool:
     chat = update.effective_chat
@@ -877,14 +877,15 @@ async def start_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # 📢 Announcement
     msg = await update.message.reply_text(
-        "📢 Timeline Updated 👇\n\n"
-        "🔗 https://x.com/glamm__girl\n\n"
-        "❤️ Like all posts of the TL account\n"
-        "📝 Drop All done in the group after completion\n\n"
-        f"⏰ Last time for activity: {end_time_str}\n\n"
-        "✅ Tracking words: done, ad, all done",
-        disable_web_page_preview=True
-    )
+    "📢 Timeline Updated 👇\n\n"
+    f"🔗 <a href='{TL_X_LINK}'>Open Timeline</a>\n\n"
+    "❤️ Like all posts of the TL account\n"
+    "📝 Drop <b>All done</b> in the group after completion\n\n"
+    f"⏰ Last time for activity: {end_time_str}\n\n"
+    "✅ Tracking words: done, ad, all done",
+    parse_mode="HTML",
+    disable_web_page_preview=True
+)
 
     # 📌 Pin message
     try:
@@ -1027,7 +1028,7 @@ def build_bot():
     application.add_handler(CommandHandler("mult", multiple_links))
     application.add_handler(CommandHandler("list", user_list))
     application.add_handler(CommandHandler("count_ad", show_ad_completed))
-    application.add_handler(CommandHandler("clear", clear_chat_data))
+    application.add_handler(CommandHandler("close", clear_chat_data))
     application.add_handler(CommandHandler("muteall", mute_all_unsafe_users))
     application.add_handler(CommandHandler("kick", kick_user))
     application.add_handler(CommandHandler("l", lock_chat))
