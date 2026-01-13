@@ -26,14 +26,9 @@ excluded_users = {
     "OMEGA_9082",
     "Mehunnaa11",
     "hectorthisside",
-    "RealRavY",
-    "Masalamoodz",
-    "meethirasmalai",
-    "Crystal_050",
-    "terakyalenadena",
-    "TumseKyaaMatlab",
-    "Pandeyshanaya1",
-    "ieshu07"
+    "Dheerusingh07",
+    "aditiraaaj",
+    "Oyepriyankasun"
 }
 TL_X_LINK = "https://x.com/oyepriyankasun2"
 
